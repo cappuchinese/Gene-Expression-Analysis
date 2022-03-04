@@ -1,0 +1,21 @@
+---
+title: "ProjectProposal Theme07"
+author: "Lisa Hu"
+output:
+  pdf_document:
+    includes:
+      before_body: title.sty
+    toc: true
+    toc_depth: 1
+    latex_engine: xelatex
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+\pagenumbering{arabic}
+\newpage
+# Short description
+The retinal pigment epithelium (RPE) is the pigmented layer of cells in the retina of the eye that serves vital roles in the visual mechanisms.
+Genetic variants that affect the RPE gene expression could lead to various ocular diseases.
+By examining genetics of gene expression of cultured human fetal RPE (fRPE) cells under two different metabolic conditions, these genetic variants could be elucidated.
+Hundreds of expression or splice quantitative loci (e/sQTLs) were discovered.
