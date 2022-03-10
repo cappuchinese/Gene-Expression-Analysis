@@ -1,0 +1,23 @@
+---
+output:
+  pdf_document:
+    includes:
+      before_body: title.sty
+    toc: true
+    toc_depth: 1
+    latex_engine: xelatex
+---
+```{r include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Exploratory Data Analysis
+```{r}
+setwd("./Data/")
+getwd()
+file.names <- list.files(pattern="*.txt.gz")
+sapply(file.names, FUN=function(file.name){
+  system(paste("gunzip", file.name))
+})
+file.names <- list.files("./Data/")
+```
