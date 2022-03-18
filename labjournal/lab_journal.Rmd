@@ -1,0 +1,76 @@
+---
+output:
+  pdf_document:
+    includes:
+      before_body: title.sty
+    toc: true
+    toc_depth: 1
+    latex_engine: xelatex
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pander)
+```
+\newpage
+# Exploratory Data Analysis
+For decompressing the data, look at the Rmd file. Run the code chunks that seem necessary.
+```{r decompress-data, eval=FALSE, echo=FALSE}
+#' Use this code chunk to decompress the data downloaded from the site
+
+## Working directory of current project
+cur.wd <- getwd()
+
+## Set the working directory to the data folder (change if needed)
+setwd("./Data")
+
+## --- DO NOT CHANGE THE CODE ---
+file.names <- list.files()
+sapply(file.names, FUN=function (file.name){
+  system(paste("gzip -d", file.name))
+})
+## --- END FIXED CODE
+
+## Change the working directory back to the path of the project
+setwd(cur.wd)
+```
+
+
+```{r create-dataset, eval=FALSE, echo=FALSE}
+#' Use this code chunk to load the different files into one dataset
+#' with multiple
+
+setwd("../Data")
+
+## Function for reading in files to one dataset
+read_sample <- function(file.name) {
+  ## Extract the sample name for naming the column
+  sample.name <- strsplit(file.name, ".", fixed = TRUE)
+  colname <- paste0(sample.name[[1]][1], "_", sample.name[[1]][2])
+  ## Read the data, setting the 'Gene' as row.names (column 1)
+  sample <- read.table(file.name, sep="\t", row.names=NULL, header=TRUE,
+                       col.names=c("Gene", colname))
+  ## Return a subset containing the 'Gene' and sample name columns
+  return(sample[c(1, 2)])
+}
+
+## Get the filenames of the data
+file.names <- list.files()
+
+## Read the FIRST sample
+dataset <- read_sample(file.names[1])
+
+## Read the rest of the sample group
+for (file.name in file.names[2:48]) {
+  sample <- read_sample(file.name)
+  dataset <- merge(dataset, sample, by = 1)
+}
+
+## Exporting completed dataset to a file
+setwd("../labjournal")
+write.table(dataset, file="gene_count.txt", sep="\t", row.names=FALSE,
+            col.names=TRUE, quote=FALSE)
+```
+
+```{r decompress-dataset, eval=FALSE, echo=FALSE}
+system("gzip -d gene_count.txt.gz")
+```
