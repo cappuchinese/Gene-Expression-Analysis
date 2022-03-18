@@ -10,6 +10,7 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(pander)
+library(dplyr)
 ```
 \newpage
 # Exploratory Data Analysis
@@ -93,5 +94,6 @@ After decompressing the data, the data can be read:
 ## Read the dataset
 dataset <- read.table("gene_count.txt", sep="\t", header=TRUE, row.names=1)
 
-pander(head(dataset))
+## Sample of the dataset
+pander(dataset[0:5, 0:3])
 ```
