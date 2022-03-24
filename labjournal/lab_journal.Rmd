@@ -1,4 +1,5 @@
 ---
+author: Lisa Hu
 output:
   pdf_document:
     includes:
@@ -8,6 +9,7 @@ output:
     latex_engine: xelatex
 ---
 ```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE)
 knitr::opts_chunk$set(echo = TRUE)
 library(pander)
 library(dplyr)
@@ -23,29 +25,16 @@ For decompressing the data, run the code chunks in the Rmd file that deem fit fo
 #' Use this code chunk to decompress the data downloaded from the site
 #' Use the code chunk after this to create the dataset
 
-## Working directory of current project
-setwd("labjournal")
-cur.wd <- getwd()
-
-## Set the working directory to the data folder (change if needed)
-setwd("./Data")
-
-## --- DO NOT CHANGE THE CODE ---
-file.names <- list.files()
+## NOTE: Change the path to the data folder
+file.names <- list.files("./Data")
 sapply(file.names, FUN=function (file.name){
   system(paste("gzip -d", file.name))
 })
-## --- END FIXED CODE ---
-
-## Change the working directory back to the path of the project
-setwd(cur.wd)
 ```
 
 
 ```{r create-dataset, eval=FALSE, echo=FALSE}
 #' Use this code chunk to load the different files into one dataset
-
-setwd("../Data")
 
 ## Function for reading in files to one dataset
 read_sample <- function(file.name) {
@@ -54,14 +43,14 @@ read_sample <- function(file.name) {
   sample.subject <- strsplit(sample.name[[1]][1], "_", fixed=TRUE)[[1]][2]
   colname <- paste0(sample.subject, "_", sample.name[[1]][2])
   ## Read the data, setting the 'Gene' as row.names (column 1)
-  sample <- read.table(file.name, sep="\t", row.names=NULL, header=TRUE,
+  sample <- read.table(paste0("./Data/", file.name), sep="\t", row.names=NULL, header=TRUE,
                        col.names=c("Gene", colname))
   ## Return a subset containing the 'Gene' and sample name columns
   return(sample[c(1, 2)])
 }
 
-## Get the filenames of the data
-file.names <- list.files()
+## Get the filenames of the data (NOTE: Change the path to the data folder)
+file.names <- list.files("./Data")
 
 ## Read the FIRST sample
 dataset <- read_sample(file.names[1])
@@ -73,8 +62,7 @@ for (file.name in file.names[2:48]) {
 }
 
 ## Exporting completed dataset to a file
-setwd("../labjournal")
-write.table(dataset, file="gene_count.txt", sep="\t", row.names=FALSE,
+write.table(dataset, file="./gene_count.txt", sep="\t", row.names=FALSE,
             col.names=TRUE, quote=FALSE)
 
 ## Now the dataset is ready to use
@@ -86,14 +74,29 @@ write.table(dataset, file="gene_count.txt", sep="\t", row.names=FALSE,
 #' Use this chunk if you did not download the data from the site and want to use
 #'  the delivered gzipped dataset
 
-system("gzip -d gene_count.txt.gz")
+## Set the count.file variable to the full path of the gene file
+count.file <- ""
+system(paste("gzip -d", count.file))
 ```
 
 After decompressing the data, the data can be read:
 ```{r load-dataset}
 ## Read the dataset
-dataset <- read.table("gene_count.txt", sep="\t", header=TRUE, row.names=1)
+dataset <- read.table("./gene_count.txt", sep="\t", header=TRUE)
+## Indices for dataset
+glucose.data <- seq(2, 47, 2)
+galactose.data <- seq(3, 48, 2)
 
 ## Sample of the dataset
-pander(dataset[0:5, 0:3])
+pander(dataset[0:5, 0:5])
 ```
+
+To create a visual representation of the data, boxplots can be created:
+```{r boxplots}
+boxplot(log2(dataset[glucose.data]+1), main="Glucose", names=seq(1, 23),
+        xlab="Sample", ylab="log2(Count)", outline=FALSE, cex.axis=0.6, cex.lab=0.8)
+boxplot(log2(dataset[galactose.data]+1), main="Galactose", names=seq(1, 23),
+        xlab="Sample", ylab="log2(Count)", outline=FALSE, cex.axis=0.6, cex.lab=0.8)
+```
+
+
