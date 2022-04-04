@@ -5,71 +5,29 @@ output:
     includes:
       before_body: title.sty
     toc: true
-    toc_depth: 1
+    toc_depth: 2
+    number_sections: true
     latex_engine: xelatex
 ---
-```{r setup, include=FALSE}
+\newpage
+# Loading the data
+```{r setup, include = TRUE, warning = FALSE, message = FALSE, results = "hide"}
 knitr::opts_chunk$set(cache = TRUE)
 knitr::opts_chunk$set(echo = TRUE)
-library(pander)
-library(dplyr)
+
+# Load packages
+packages <- c("pander", "dplyr", "affy", "knitr", "ggplot2", "DESeq2", "pheatmap",
+              "PoiClaClu", "scales")
+invisible(lapply(packages, library, character.only = T))
 ```
-\newpage
-# Exploratory Data Analysis
+
 For decompressing the data, run the code chunks in the Rmd file that deem fit for your situation:
 
-* If you downloaded the data from the official site: Run coded chunks `decompress-data` and `create-dataset`.
+* If you downloaded the data from the official site: Decompress the data and run the Rscript `data_loading.R`.
 * If you want to use the dataset delivered with the project: Run the `decompress-dataset` code chunk.
 
-```{r decompress-data, eval=FALSE, echo=FALSE}
-#' Use this code chunk to decompress the data downloaded from the site
-#' Use the code chunk after this to create the dataset
 
-## NOTE: Change the path to the data folder
-file.names <- list.files("./Data")
-sapply(file.names, FUN=function (file.name){
-  system(paste("gzip -d", file.name))
-})
-```
-
-
-```{r create-dataset, eval=FALSE, echo=FALSE}
-#' Use this code chunk to load the different files into one dataset
-
-## Function for reading in files to one dataset
-read_sample <- function(file.name) {
-  ## Extract the sample name for naming the column
-  sample.name <- strsplit(file.name, ".", fixed = TRUE)
-  sample.subject <- strsplit(sample.name[[1]][1], "_", fixed=TRUE)[[1]][2]
-  colname <- paste0(sample.subject, "_", sample.name[[1]][2])
-  ## Read the data, setting the 'Gene' as row.names (column 1)
-  sample <- read.table(paste0("./Data/", file.name), sep="\t", row.names=NULL, header=TRUE,
-                       col.names=c("Gene", colname))
-  ## Return a subset containing the 'Gene' and sample name columns
-  return(sample[c(1, 2)])
-}
-
-## Get the filenames of the data (NOTE: Change the path to the data folder)
-file.names <- list.files("./Data")
-
-## Read the FIRST sample
-dataset <- read_sample(file.names[1])
-
-## Read the rest of the sample group
-for (file.name in file.names[2:48]) {
-  sample <- read_sample(file.name)
-  dataset <- merge(dataset, sample, by = 1)
-}
-
-## Exporting completed dataset to a file
-write.table(dataset, file="./gene_count.txt", sep="\t", row.names=FALSE,
-            col.names=TRUE, quote=FALSE)
-
-## Now the dataset is ready to use
-```
-
-
-```{r decompress-dataset, eval=FALSE, echo=FALSE}
+```{r decompress-dataset, eval = FALSE}
 #' Decompress the complete dataset
 #' Use this chunk if you did not download the data from the site and want to use
 #'  the delivered gzipped dataset
@@ -82,21 +40,124 @@ system(paste("gzip -d", count.file))
 After decompressing the data, the data can be read:
 ```{r load-dataset}
 ## Read the dataset
-dataset <- read.table("./gene_count.txt", sep="\t", header=TRUE)
+dataset <- read.table("./gene_count.txt", sep = "\t", header = TRUE)
+## Set rownames of the dataset to first column
+row.names(dataset) <- dataset$Gene
+## Remove the Gene column
+dataset <- dataset[-1]
+
 ## Indices for dataset
-glucose.data <- seq(2, 47, 2)
-galactose.data <- seq(3, 48, 2)
+galactose.data <- seq(2, 49, 2)
+glucose.data <- seq(1, 48, 2)
 
-## Sample of the dataset
-pander(dataset[0:5, 0:5])
+## A new column with all the means of each row for both groups
+dataset$Glucose_mean <- rowMeans(dataset[glucose.data])
+dataset$Galactose_mean <- rowMeans(dataset[galactose.data])
 ```
 
-To create a visual representation of the data, boxplots can be created:
+\newpage
+# Exploratory Data Analysis
+## Data sample
+```{r data-sample}
+pander(dataset[0:5, 0:4], split.tables = 64)
+pander(summary(dataset[,0:6]), split.tables = 64)
+```
+
+## Plots for insight
 ```{r boxplots}
-boxplot(log2(dataset[glucose.data]+1), main="Glucose", names=seq(1, 23),
-        xlab="Sample", ylab="log2(Count)", outline=FALSE, cex.axis=0.6, cex.lab=0.8)
-boxplot(log2(dataset[galactose.data]+1), main="Galactose", names=seq(1, 23),
-        xlab="Sample", ylab="log2(Count)", outline=FALSE, cex.axis=0.6, cex.lab=0.8)
+boxplot(log2(dataset[glucose.data]+1), main = "Glucose", names = seq(1, 24),
+        xlab = "Sample", ylab = "log2(Count)", outline = FALSE,
+        cex.axis = 0.6, cex.lab = 0.8)
+boxplot(log2(dataset[galactose.data]+1), main = "Galactose", names = seq(1, 24),
+        xlab = "Sample", ylab = "log2(Count)", outline = FALSE,
+        cex.axis = 0.6, cex.lab = 0.8)
 ```
+
+
+```{r density plot}
+## Colors for the two groups (red = galactose, blue = glucose)
+group.cols <- hue_pal()(2)
+plotDensity(log2(dataset[1:48]+1), main = "Density plot", col = group.cols,
+            lty = 1:48, xlab = "log2(count)")
+legend("topright", names(dataset[1:48]), lty = 1:48, col = group.cols,
+       cex = 0.7, ncol = 3)
+```
+
+The density plot can be hard to read as is, so by taking the average of each gene per sample group, a more simplified density plot can be created:
+```{r density-plot-mean}
+plotDensity(log2(dataset[,c("Glucose_mean", "Galactose_mean")]+1), main = "Density plot",
+            col = group.cols, lty = c(1,2), xlab = "log2(count)")
+legend("topright", c("Glucose mean", "Galactose mean"), lty = c(1,2), col = group.cols)
+```
+
+
+```{r sequencing-depth}
+## Barplot of first half of the data
+x1 <- barplot(colSums(dataset[1:24]/ 1e6), main = "Barplot sequencing depth",
+              xlab = "Sample", ylab = expression("Sequencing depth (x10"^6*")"),
+              ylim = c(0, 70), las = 2, col = group.cols, xaxt = 'n')
+text(x = x1, y = colSums(dataset[1:24]/ 1e6),
+     label = round(colSums(dataset[1:24]/ 1e6),0), pos = 3)
+axis(1, at = x1, labels = rep(1:12, each = 2), tick = FALSE, cex = 0.6)
+legend("topright", c("Glucose", "Galactose"), col = group.cols, pch = 19)
+
+## Rest of the data
+x2 <- barplot(colSums(dataset[25:48]/ 1e6), main = "Barplot sequencing depth",
+              xlab = "Sample", ylab = expression("Sequencing depth (x10"^6*")"),
+              ylim = c(0, 70), las = 2, col = group.cols, xaxt = 'n')
+text(x = x2, y = colSums(dataset[25:48]/ 1e6),
+     label = round(colSums(dataset[25:48]/ 1e6), 0), pos = 3)
+axis(1, at = x1, labels = rep(13:24, each = 2), tick = FALSE, cex = 0.6)
+legend("topright", c("Glucose", "Galactose"), col = group.cols, pch = 19)
+```
+
+\newpage
+# Normalization
+```{r normalization, message = FALSE, warning = FALSE}
+ddsMat <- DESeqDataSetFromMatrix(countData = round(dataset[1:48]),
+                                 colData = data.frame(samples = names(dataset[1:48])),
+                                                      design = ~ 1)
+rld.dds <- vst(ddsMat)
+rld <- assay(rld.dds)
+sampledists <- dist(t(rld))
+```
+
+```{r heatmap}
+distMatrix <- as.matrix(sampledists)
+
+annotation <- data.frame(Cell = factor(rep(1:2, times = 24),
+                                     labels = c("Glucose", "Galactose")),
+                         Ploidy = factor(rep(1:24, each = 2), labels = as.character(1:24)))
+
+rownames(annotation) <- names(dataset[1:48])
+
+pheatmap(distMatrix, show_colnames = F,
+         annotation_col = annotation,
+         clustering_distance_rows = sampledists,
+         clustering_distance_cols = sampledists,
+         main = "Euclidean Sample Distances", fontsize_row = 6)
+```
+
+
+```{r mds}
+dds <- assay(ddsMat)
+poisd <- PoissonDistance(t(dds), type="deseq")
+## Extract matrix with distances
+poisDistMatrix <- as.matrix(poisd$dd)
+## Calculate MDS for X- and Y- coordinates
+mdsPoisData <- data.frame(cmdscale(poisDistMatrix))
+## Readable names
+names(mdsPoisData) <- c("x_coord", "y_coord")
+## Annotation labels
+groups <- factor(rep(1:2, times=24), labels = c("Glucose", "Galactose"))
+coldata <- rep(1:24, each=2)
+
+ggplot(mdsPoisData, aes(x_coord, y_coord, color = groups, label = coldata)) +
+        geom_text(size = 3) +
+        ggtitle("Multi Dimensional Scaling") +
+        labs(x = "Poisson Distance", y = "Poisson Distance") +
+        theme_bw()
+```
+
 
 
