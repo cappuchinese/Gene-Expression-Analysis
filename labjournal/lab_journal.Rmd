@@ -9,7 +9,13 @@ output:
     number_sections: true
     latex_engine: xelatex
 ---
+
+[//]: # (Page 1, toc)
+
 \newpage
+
+[//]: # (Page 2)
+
 # Loading the data
 ```{r setup, include = TRUE, warning = FALSE, message = FALSE, results = "hide"}
 knitr::opts_chunk$set(cache = TRUE)
@@ -47,15 +53,18 @@ row.names(dataset) <- dataset$Gene
 dataset <- dataset[-1]
 
 ## Indices for dataset
-galactose.data <- seq(2, 49, 2)
 glucose.data <- seq(1, 48, 2)
+galactose.data <- seq(2, 49, 2)
+groups <- factor(rep(1:2, times=24), labels = c("Glucose", "Galactose"))
 
-## A new column with all the means of each row for both groups
-dataset$Glucose_mean <- rowMeans(dataset[glucose.data])
-dataset$Galactose_mean <- rowMeans(dataset[galactose.data])
+## Colors for the two sample groups (red = galactose, blue = glucose)
+group.cols <- hue_pal()(2)
 ```
 
 \newpage
+
+[//]: # (Page 3)
+
 # Exploratory Data Analysis
 ## Data sample
 ```{r data-sample}
@@ -63,37 +72,40 @@ pander(dataset[0:5, 0:4], split.tables = 64)
 pander(summary(dataset[,0:6]), split.tables = 64)
 ```
 
+\newpage
+
+[//]: # (Page 4)
+
 ## Plots for insight
 ```{r boxplots}
+layout(matrix(c(1,1,2,2), nrow = 4, ncol = 1, byrow = T))
+## Glucose plot
 boxplot(log2(dataset[glucose.data]+1), main = "Glucose", names = seq(1, 24),
-        xlab = "Sample", ylab = "log2(Count)", outline = FALSE,
-        cex.axis = 0.6, cex.lab = 0.8)
+        xlab = "Sample", ylab = "log2(Count)", outline = FALSE)
+## Galactose plot
 boxplot(log2(dataset[galactose.data]+1), main = "Galactose", names = seq(1, 24),
-        xlab = "Sample", ylab = "log2(Count)", outline = FALSE,
-        cex.axis = 0.6, cex.lab = 0.8)
+        xlab = "Sample", ylab = "log2(Count)", outline = FALSE)
 ```
 
+\newpage
+
+[//]: # (Page 5)
 
 ```{r density plot}
-## Colors for the two groups (red = galactose, blue = glucose)
-group.cols <- hue_pal()(2)
-plotDensity(log2(dataset[1:48]+1), main = "Density plot", col = group.cols,
+plotDensity(log2(dataset+1), main = "Density plot", col = group.cols,
             lty = 1:48, xlab = "log2(count)")
-legend("topright", names(dataset[1:48]), lty = 1:48, col = group.cols,
+legend("topright", names(dataset), lty = 1:48, col = group.cols,
        cex = 0.7, ncol = 3)
 ```
 
-The density plot can be hard to read as is, so by taking the average of each gene per sample group, a more simplified density plot can be created:
-```{r density-plot-mean}
-plotDensity(log2(dataset[,c("Glucose_mean", "Galactose_mean")]+1), main = "Density plot",
-            col = group.cols, lty = c(1,2), xlab = "log2(count)")
-legend("topright", c("Glucose mean", "Galactose mean"), lty = c(1,2), col = group.cols)
-```
+\newpage
 
+[//]: # (Page 6)
 
-```{r sequencing-depth}
+```{r sequencing-depth, fig.height = 6}
+layout(matrix(c(1,1,1,2,2,2), nrow = 6, ncol = 1, byrow = T))
 ## Barplot of first half of the data
-x1 <- barplot(colSums(dataset[1:24]/ 1e6), main = "Barplot sequencing depth",
+x1 <- barplot(colSums(dataset[1:24]/ 1e6), main = "Sequencing depth sample 1-12",
               xlab = "Sample", ylab = expression("Sequencing depth (x10"^6*")"),
               ylim = c(0, 70), las = 2, col = group.cols, xaxt = 'n')
 text(x = x1, y = colSums(dataset[1:24]/ 1e6),
@@ -102,20 +114,22 @@ axis(1, at = x1, labels = rep(1:12, each = 2), tick = FALSE, cex = 0.6)
 legend("topright", c("Glucose", "Galactose"), col = group.cols, pch = 19)
 
 ## Rest of the data
-x2 <- barplot(colSums(dataset[25:48]/ 1e6), main = "Barplot sequencing depth",
+x2 <- barplot(colSums(dataset[25:48]/ 1e6), main = "Sequencing depth sample 13-24",
               xlab = "Sample", ylab = expression("Sequencing depth (x10"^6*")"),
-              ylim = c(0, 70), las = 2, col = group.cols, xaxt = 'n')
+              ylim = c(0, 60), las = 2, col = group.cols, xaxt = 'n')
 text(x = x2, y = colSums(dataset[25:48]/ 1e6),
      label = round(colSums(dataset[25:48]/ 1e6), 0), pos = 3)
 axis(1, at = x1, labels = rep(13:24, each = 2), tick = FALSE, cex = 0.6)
-legend("topright", c("Glucose", "Galactose"), col = group.cols, pch = 19)
 ```
 
 \newpage
+
+[//]: # (Page 7)
+
 # Normalization
 ```{r normalization, message = FALSE, warning = FALSE}
-ddsMat <- DESeqDataSetFromMatrix(countData = round(dataset[1:48]),
-                                 colData = data.frame(samples = names(dataset[1:48])),
+ddsMat <- DESeqDataSetFromMatrix(countData = round(dataset),
+                                 colData = data.frame(samples = names(dataset)),
                                                       design = ~ 1)
 rld.dds <- vst(ddsMat)
 rld <- assay(rld.dds)
@@ -125,17 +139,15 @@ sampledists <- dist(t(rld))
 ```{r heatmap}
 distMatrix <- as.matrix(sampledists)
 
-annotation <- data.frame(Cell = factor(rep(1:2, times = 24),
-                                     labels = c("Glucose", "Galactose")),
-                         Ploidy = factor(rep(1:24, each = 2), labels = as.character(1:24)))
+annotation <- data.frame(GrowthMedium = groups)
 
-rownames(annotation) <- names(dataset[1:48])
+rownames(annotation) <- names(dataset)
 
-pheatmap(distMatrix, show_colnames = F,
+pheatmap(distMatrix, show_colnames = T,
          annotation_col = annotation,
          clustering_distance_rows = sampledists,
          clustering_distance_cols = sampledists,
-         main = "Euclidean Sample Distances", fontsize_row = 6)
+         main = "Euclidean Sample Distances", fontsize= 6)
 ```
 
 
@@ -148,8 +160,7 @@ poisDistMatrix <- as.matrix(poisd$dd)
 mdsPoisData <- data.frame(cmdscale(poisDistMatrix))
 ## Readable names
 names(mdsPoisData) <- c("x_coord", "y_coord")
-## Annotation labels
-groups <- factor(rep(1:2, times=24), labels = c("Glucose", "Galactose"))
+## Annotation label
 coldata <- rep(1:24, each=2)
 
 ggplot(mdsPoisData, aes(x_coord, y_coord, color = groups, label = coldata)) +
@@ -157,6 +168,13 @@ ggplot(mdsPoisData, aes(x_coord, y_coord, color = groups, label = coldata)) +
         ggtitle("Multi Dimensional Scaling") +
         labs(x = "Poisson Distance", y = "Poisson Distance") +
         theme_bw()
+```
+
+\newpage
+# Discovering Differentially Expressed Genes (DEGs)
+## Using Bioconductor Packages
+```{r design-matrix}
+design <- model.matrix(~ groups)
 ```
 
 
