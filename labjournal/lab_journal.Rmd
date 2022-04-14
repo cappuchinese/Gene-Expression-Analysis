@@ -23,7 +23,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Load packages
 packages <- c("pander", "dplyr", "affy", "knitr", "ggplot2", "DESeq2", "pheatmap",
-              "PoiClaClu", "scales")
+              "PoiClaClu", "scales", "apeglm", "EnhancedVolcano")
 invisible(lapply(packages, library, character.only = T))
 ```
 
@@ -56,6 +56,7 @@ dataset <- dataset[-1]
 glucose.data <- seq(1, 48, 2)
 galactose.data <- seq(2, 49, 2)
 groups <- factor(rep(1:2, times=24), labels = c("Glucose", "Galactose"))
+col.ordered <- c(colnames(dataset[glucose.data]), colnames(dataset[galactose.data]))
 
 ## Colors for the two sample groups (red = galactose, blue = glucose)
 group.cols <- hue_pal()(2)
@@ -76,7 +77,7 @@ pander(summary(dataset[,0:6]), split.tables = 64)
 
 [//]: # (Page 4)
 
-## Plots for insight
+## Boxplots
 ```{r boxplots}
 layout(matrix(c(1,1,2,2), nrow = 4, ncol = 1, byrow = T))
 ## Glucose plot
@@ -90,7 +91,7 @@ boxplot(log2(dataset[galactose.data]+1), main = "Galactose", names = seq(1, 24),
 \newpage
 
 [//]: # (Page 5)
-
+## Density plots
 ```{r density plot}
 plotDensity(log2(dataset+1), main = "Density plot", col = group.cols,
             lty = 1:48, xlab = "log2(count)")
@@ -101,7 +102,7 @@ legend("topright", names(dataset), lty = 1:48, col = group.cols,
 \newpage
 
 [//]: # (Page 6)
-
+## Barplots
 ```{r sequencing-depth, fig.height = 6}
 layout(matrix(c(1,1,1,2,2,2), nrow = 6, ncol = 1, byrow = T))
 ## Barplot of first half of the data
@@ -136,7 +137,8 @@ rld <- assay(rld.dds)
 sampledists <- dist(t(rld))
 ```
 
-```{r heatmap}
+## Heatmaps
+```{r heatmap-original}
 distMatrix <- as.matrix(sampledists)
 
 annotation <- data.frame(GrowthMedium = groups)
@@ -149,8 +151,31 @@ pheatmap(distMatrix, show_colnames = T,
          clustering_distance_cols = sampledists,
          main = "Euclidean Sample Distances", fontsize= 6)
 ```
+\newpage
 
+[//]: # (Page 8)
 
+A plot without the clustering and ordered groups:
+```{r heatmap-clusterless}
+rld.ord <- rld[,col.ordered]
+sampledists.ord <- dist(t(rld.ord))
+
+distMatrix.ord <- as.matrix(sampledists.ord)
+
+annotation.ord <- data.frame(GrowthMedium = factor(rep(1:2, each = 24),
+                                               labels = c("Glucose", "Galactose")))
+
+rownames(annotation.ord) <- col.ordered
+
+pheatmap(distMatrix.ord, show_colnames = TRUE,
+         annotation_col = annotation.ord, cluster_rows = FALSE, cluster_cols = FALSE,
+         main = "Euclidean Sample Distances", fontsize= 6)
+```
+\newpage
+
+[//]: # (Page 9)
+## Multi Dimensional Scaling
+Since the colours confirm the sample group, the sample names were simplified to only the number indicating the different samples.
 ```{r mds}
 dds <- assay(ddsMat)
 poisd <- PoissonDistance(t(dds), type="deseq")
@@ -171,10 +196,49 @@ ggplot(mdsPoisData, aes(x_coord, y_coord, color = groups, label = coldata)) +
 ```
 
 \newpage
+
+[//]: # (Page 10)
 # Discovering Differentially Expressed Genes (DEGs)
-## Using Bioconductor Packages
-```{r design-matrix}
-design <- model.matrix(~ groups)
+## Pre-processing
+Genes with average read count below 10 and with zero counts in more than 20% of samples (10 samples) were considered not expressed and filtered.
+```{r fpm}
+fpm <- log2( (dataset / (colSums(dataset) / 1e6)) + 1 )
+zero.counts <- apply(dataset, 1, function(x) length(which(x==0)))
+filtered.subset <- subset(dataset, rowSums(dataset)/48 > 10 | zero.counts < 10)
+```
+
+Leaving the dataset look a bit like this:
+```{r summary-filtered}
+pander(filtered.subset[0:5, 0:4], split.tables = 64)
+pander(summary(filtered.subset[,0:6]), split.tables = 64)
+```
+\newpage
+
+[//]: # (Page 11)
+
+## DESeq2 analysis
+```{r design-matrix, message = FALSE}
+## Create design frame
+design <- data.frame(groups)
+## Create new DDS object with correct design
+ddsMat <- DESeqDataSetFromMatrix(countData = filtered.subset,
+                                 colData = design, design = ~0 + groups)
+ddsMat <- DESeq(ddsMat)
+## Results of the new DDS object
+dds.res <- results(ddsMat, alpha=0.05)
+summary(dds.res)
+## Shrinkage
+resultsNames(ddsMat)
+lfc.gal <- lfcShrink(ddsMat, coef = "groupsGalactose", type = "apeglm")
+summary(lfc.gal)
+```
+
+\newpage
+
+[//]: # (Page 12)
+## MA plot
+```{r ma-plot}
+DESeq2::plotMA(dds.res, main = "Glucose vs galactose")
 ```
 
 
