@@ -16,18 +16,21 @@ output:
 
 [//]: # (Page 2)
 
-# Loading the data
+# Loading the Data
 ```{r setup, include = TRUE, warning = FALSE, message = FALSE, results = "hide"}
+#' Setup chunk
 knitr::opts_chunk$set(cache = TRUE)
 knitr::opts_chunk$set(echo = TRUE)
 
 # Load packages
 packages <- c("pander", "dplyr", "affy", "knitr", "ggplot2", "DESeq2", "pheatmap",
-              "PoiClaClu", "scales", "apeglm", "EnhancedVolcano")
+              "PoiClaClu", "scales", "apeglm", "EnhancedVolcano", "crayon")
 invisible(lapply(packages, library, character.only = T))
+require(httr)
+require(jsonlite)
 ```
 
-For decompressing the data, run the code chunks in the Rmd file that deem fit for your situation:
+For decompressing the data^[https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE129479], run the code chunks in the Rmd file that deem fit for your situation:
 
 * If you downloaded the data from the official site: Decompress the data and run the Rscript `data_loading.R`.
 * If you want to use the dataset delivered with the project: Run the `decompress-dataset` code chunk.
@@ -51,8 +54,11 @@ dataset <- read.table("./gene_count.txt", sep = "\t", header = TRUE)
 row.names(dataset) <- dataset$Gene
 ## Remove the Gene column
 dataset <- dataset[-1]
+## Remove the first 5 rows (these rows are not genes)
+dataset <- dataset[!(rownames(dataset) %in% c("__no_feature", "__ambiguous",
+                     "__alignment_not_unique", "__too_low_aQual", "__not_aligned")),]
 
-## Indices for dataset
+## Column indices for dataset
 glucose.data <- seq(1, 48, 2)
 galactose.data <- seq(2, 49, 2)
 groups <- factor(rep(1:2, times=24), labels = c("Glucose", "Galactose"))
@@ -67,7 +73,7 @@ group.cols <- hue_pal()(2)
 [//]: # (Page 3)
 
 # Exploratory Data Analysis
-## Data sample
+## Data Sample
 ```{r data-sample}
 pander(dataset[0:5, 0:4], split.tables = 64)
 pander(summary(dataset[,0:6]), split.tables = 64)
@@ -79,7 +85,7 @@ pander(summary(dataset[,0:6]), split.tables = 64)
 
 ## Boxplots
 ```{r boxplots}
-layout(matrix(c(1,1,2,2), nrow = 4, ncol = 1, byrow = T))
+layout(matrix(c(1,1,1,2,2,2), nrow = 6, ncol = 1, byrow = T))
 ## Glucose plot
 boxplot(log2(dataset[glucose.data]+1), main = "Glucose", names = seq(1, 24),
         xlab = "Sample", ylab = "log2(Count)", outline = FALSE)
@@ -91,7 +97,7 @@ boxplot(log2(dataset[galactose.data]+1), main = "Galactose", names = seq(1, 24),
 \newpage
 
 [//]: # (Page 5)
-## Density plots
+## Density Plots
 ```{r density plot}
 plotDensity(log2(dataset+1), main = "Density plot", col = group.cols,
             lty = 1:48, xlab = "log2(count)")
@@ -199,47 +205,105 @@ ggplot(mdsPoisData, aes(x_coord, y_coord, color = groups, label = coldata)) +
 
 [//]: # (Page 10)
 # Discovering Differentially Expressed Genes (DEGs)
-## Pre-processing
-Genes with average read count below 10 and with zero counts in more than 20% of samples (10 samples) were considered not expressed and filtered.
-```{r fpm}
+## The Fold Change Value
+```{r fold-change}
 fpm <- log2( (dataset / (colSums(dataset) / 1e6)) + 1 )
-zero.counts <- apply(dataset, 1, function(x) length(which(x==0)))
-filtered.subset <- subset(dataset, rowSums(dataset)/48 > 10 | zero.counts < 10)
-```
 
-Leaving the dataset look a bit like this:
-```{r summary-filtered}
-pander(filtered.subset[0:5, 0:4], split.tables = 64)
-pander(summary(filtered.subset[,0:6]), split.tables = 64)
+## New columns for average fpm
+fpm$avg_glu <- rowMeans(fpm[glucose.data])
+fpm$avg_gal <- rowMeans(fpm[galactose.data])
+
+## Calculate FC
+fpm$fc_galglu <- fpm$avg_gal - fpm$avg_glu
+
+## Create histogram of the fold changes
+hist(fpm$fc_galglu, main = "Fold Change (GAL vs GLU)",
+     col=group.cols[2], breaks=100, xlab = "Fold Change")
+## Vertical ablines
+abline(v = c(1,-1), lty = 2, col = group.cols[1])
 ```
 \newpage
 
 [//]: # (Page 11)
-
-## DESeq2 analysis
-```{r design-matrix, message = FALSE}
+## DESeq2 Analysis
+Genes with average read count below 10 and with zero counts in more than 20% of samples (10 samples) were considered not expressed and filtered.
+```{r data-filtering, message = FALSE}
 ## Create design frame
-design <- data.frame(groups)
+design <- data.frame(groups, row.names = colnames(dataset))
 ## Create new DDS object with correct design
-ddsMat <- DESeqDataSetFromMatrix(countData = filtered.subset,
-                                 colData = design, design = ~0 + groups)
-ddsMat <- DESeq(ddsMat)
-## Results of the new DDS object
-dds.res <- results(ddsMat, alpha=0.05)
-summary(dds.res)
+dds <- DESeqDataSetFromMatrix(countData = dataset,
+                                 colData = design, design = ~ groups)
+## Keep genes with more than 1 count
+dds <- dds[ rowSums(counts(dds)) > 1, ]
+dds <- DESeq(dds)
+dds
+
+## Results
+dds.res <- results(dds, alpha=0.05)
+
+## Filter out reads below 10
+dds.filtered <- dds.res[!dds.res$baseMean < 10,]
+
 ## Shrinkage
-resultsNames(ddsMat)
-lfc.gal <- lfcShrink(ddsMat, coef = "groupsGalactose", type = "apeglm")
+resultsNames(dds)
+lfc.gal <- lfcShrink(dds, coef = "groups_Galactose_vs_Glucose", res = dds.res,
+                     type = "apeglm")
+lfc.gal
 summary(lfc.gal)
 ```
 
 \newpage
 
 [//]: # (Page 12)
-## MA plot
+### MA Plot
 ```{r ma-plot}
-DESeq2::plotMA(dds.res, main = "Glucose vs galactose")
+DESeq2::plotMA(lfc.gal, main = "Glucose vs galactose", ylim = c(-2, 2))
+```
+\newpage
+
+[//]: # (Page 13)
+
+# Data analysis and Visualization
+## Volcano Plot
+```{r volcano}
+EnhancedVolcano(lfc.gal, x = 'log2FoldChange', y = 'padj', lab=rownames(lfc.gal),
+                title = "Glucose vs galactose",
+                subtitle = bquote(italic('FDR <= 0.05 and absolute FC >= 2')),
+                # Change text and icon sizes
+                labSize = 3, pointSize = 1.5, axisLabSize=10, titleLabSize=12,
+                subtitleLabSize=8, captionLabSize=10,
+                # Disable legend
+                legendPosition = "none",
+                # Set cutoffs
+                pCutoff = 0.05, FCcutoff = 2)
+
 ```
 
+The points in red in this plot are important to find out what genes are differentially expressed. To do this, we can subset the data (`lfc.gal`) to filter the red dots:
+```{r subset-shrinkage}
+genes <- subset(lfc.gal, lfc.gal[,'log2FoldChange'] > 2 & -log10(lfc.gal[,'padj']) > 0.05
+                | lfc.gal[,'log2FoldChange'] < -2)
+```
+\newpage
 
+[//]: # (Page 14)
+The rownames are gene IDs from the Ensembl database. Using an Ensembl ID to Gene Symbol converter^[https://www.biotools.fr/human/ensembl_symbol_converter], the gene names can be found:
+```{r id-request, message = FALSE}
+## Get the IDs
+url <- "https://biotools.fr/human/ensembl_symbol_converter/"
+ids <- rownames(genes)
+ids_json <- toJSON(ids)
 
+## Create the request
+body <- list(api = 1, ids = ids_json)
+req <- POST(url, body = body)
+
+output <-  fromJSON( content(req, "text"), flatten = TRUE )
+df <- data.frame(unlist(output))
+colnames(df) <- "Gene symbol"
+pander(df, split.tables = 64)
+```
+
+\newpage
+
+[//]: # (Page 15, references)
